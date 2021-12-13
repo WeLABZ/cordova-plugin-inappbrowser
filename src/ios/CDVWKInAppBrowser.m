@@ -396,6 +396,28 @@ static CDVWKInAppBrowser* instance = nil;
     [self.inAppBrowserViewController navigateTo:url];
 }
 
+- (void)setLayout:(CDVInvokedUrlCommand*)command
+{
+    NSLog(@"Method not implemented!");
+
+    // NSString* xString = [command argumentAtIndex:0];
+    // NSString* yString = [command argumentAtIndex:1];
+    // NSString* widthString = [command argumentAtIndex:2];
+    // NSString* heightString = [command argumentAtIndex:3];
+
+    // if (!self->tmpWindow) {
+    //     double x      = xString != nil ? [xString doubleValue] : self->tmpWindow.frame.origin.x;
+    //     double y      = yString != nil ? [xString doubleValue] : self->tmpWindow.frame.origin.y;
+    //     double width  = widthString != nil ? [xString doubleValue] : (self->tmpWindow.frame.size.width - x); // For taking in consideration if (x) is set , custom width not set
+    //     double height = heightString != nil ? [xString doubleValue] : (self->tmpWindow.frame.size.height - y); // For taking in consideration if (y) is set , custom height not set
+        
+    //     self->tmpWindow.frame = CGRectMake(x, y, width, height);
+    // } else {
+    //     NSLog(@"Tried to invoke setLayout on IAB but tmpWindow frame is nil.");
+    //     return;
+    // }
+}
+
 // This is a helper method for the inject{Script|Style}{Code|File} API calls, which
 // provides a consistent method for injecting JavaScript code into the document.
 //

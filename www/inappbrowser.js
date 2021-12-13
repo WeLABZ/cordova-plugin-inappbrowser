@@ -89,6 +89,10 @@
             } else {
                 throw new Error('insertCSS requires exactly one of code or file to be specified');
             }
+        },
+
+        setLayout: function (x, y, width, height) {
+            exec(null, null, 'InAppBrowser', 'setLayout', [x, y, width, height]);
         }
     };
 

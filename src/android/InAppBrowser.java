@@ -339,6 +339,39 @@ public class InAppBrowser extends CordovaPlugin {
             pluginResult.setKeepCallback(true);
             this.callbackContext.sendPluginResult(pluginResult);
         }
+        else if (action.equals("setLayout")) {
+            this.cordova.getActivity().runOnUiThread(new Runnable() {
+                /**
+                * Convert our DIP units to Pixels
+                *
+                * @return int
+                */
+                private int dpToPixels(int dipValue) {
+                    int value = (int) TypedValue.applyDimension( TypedValue.COMPLEX_UNIT_DIP,
+                            (float) dipValue,
+                            cordova.getActivity().getResources().getDisplayMetrics()
+                    );
+
+                    return value;
+                }
+
+                @Override
+                public void run() {
+                    if (dialog != null && !cordova.getActivity().isFinishing()) {
+                        Window window = dialog.getWindow();
+                        WindowManager.LayoutParams wlp = window.getAttributes();
+                        wlp.x = (0 != args.optInt(0)) ? this.dpToPixels(args.optInt(0)) : 0;
+                        wlp.y = (0 != args.optInt(1)) ? this.dpToPixels(args.optInt(1)) : 0;
+                        wlp.width = (0 != args.optInt(2)) ? this.dpToPixels(args.optInt(2)) : WindowManager.LayoutParams.MATCH_PARENT;
+                        wlp.height = (0 != args.optInt(3)) ? this.dpToPixels(args.optInt(3)) : WindowManager.LayoutParams.MATCH_PARENT;
+                        window.setAttributes(wlp);
+                    }
+                }
+            });
+            PluginResult pluginResult = new PluginResult(PluginResult.Status.OK);
+            pluginResult.setKeepCallback(true);
+            this.callbackContext.sendPluginResult(pluginResult);
+        }
         else {
             return false;
         }
@@ -804,7 +837,7 @@ public class InAppBrowser extends CordovaPlugin {
                 wlp.height = features.get(HEIGHT) != null ? this.dpToPixels(Integer.parseInt(features.get(HEIGHT))) : WindowManager.LayoutParams.MATCH_PARENT;
                 wlp.dimAmount=0.5f;
                 window.setFlags(LayoutParams.FLAG_NOT_TOUCH_MODAL,LayoutParams.FLAG_NOT_TOUCH_MODAL);
-                window.setFlags(LayoutParams.FLAG_NOT_FOCUSABLE,LayoutParams.FLAG_NOT_FOCUSABLE);
+                // window.setFlags(LayoutParams.FLAG_NOT_FOCUSABLE,LayoutParams.FLAG_NOT_FOCUSABLE);
                 window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
                 window.setAttributes(wlp);
 
