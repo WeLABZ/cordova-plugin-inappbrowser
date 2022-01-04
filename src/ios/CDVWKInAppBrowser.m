@@ -37,7 +37,8 @@
 #define    IAB_BRIDGE_NAME @"cordova_iab"
 
 #define    TOOLBAR_HEIGHT 44.0
-#define    LOCATIONBAR_HEIGHT 21.0
+//#define    LOCATIONBAR_HEIGHT 21.0
+#define    LOCATIONBAR_HEIGHT 0.0
 #define    FOOTER_HEIGHT ((TOOLBAR_HEIGHT) + (LOCATIONBAR_HEIGHT))
 
 #pragma mark CDVWKInAppBrowser
@@ -316,6 +317,24 @@ static CDVWKInAppBrowser* instance = nil;
                 frame   = CGRectMake(x , y , width , height );
 
                 strongSelf->tmpWindow = [[UIWindow alloc] initWithFrame:frame];
+
+                BOOL locationbarVisible = !self.inAppBrowserViewController.addressLabel.hidden;
+                BOOL toolbarVisible = !self.inAppBrowserViewController.toolbar.hidden;
+
+                if (self->_CDVBrowserOptions.location || self->_CDVBrowserOptions.toolbar) {
+                    CGRect webViewBounds = self.inAppBrowserViewController.webView.bounds;
+                    webViewBounds.size.height = height;
+
+                    if (locationbarVisible) {
+                        webViewBounds.size.height -= LOCATIONBAR_HEIGHT;
+                    }
+
+                    if (toolbarVisible) {
+                        webViewBounds.size.height -= TOOLBAR_HEIGHT;
+                    }
+
+                    [self.inAppBrowserViewController.webView setFrame:webViewBounds];
+                }
             }
             UIViewController *tmpController = [[UIViewController alloc] init];
             [strongSelf->tmpWindow setRootViewController:tmpController];
@@ -927,17 +946,27 @@ BOOL isExiting = FALSE;
       self.backButton.tintColor = [self colorFromHexString:_browserOptions.navigationbuttoncolor];
     }
 
+    self.toolbarTitle = [[UIBarButtonItem alloc] initWithCustomView:self.addressLabel];
+    self.toolbarTitle.enabled = YES;
+    self.toolbarTitle.imageInsets = UIEdgeInsetsZero;
+    if (_browserOptions.navigationbuttoncolor != nil) { // Set button color if user sets it in options
+      self.toolbarTitle.tintColor = [self colorFromHexString:_browserOptions.navigationbuttoncolor];
+    }
+
     // Filter out Navigation Buttons if user requests so
     if (_browserOptions.hidenavigationbuttons) {
+        self.addressLabel.textAlignment = NSTextAlignmentLeft;
         if (_browserOptions.lefttoright) {
-            [self.toolbar setItems:@[flexibleSpaceButton, self.closeButton]];
+            [self.toolbar setItems:@[self.toolbarTitle, flexibleSpaceButton, self.closeButton]];
         } else {
-            [self.toolbar setItems:@[self.closeButton, flexibleSpaceButton]];
+            [self.toolbar setItems:@[self.closeButton, fixedSpaceButton, self.toolbarTitle]];
         }
     } else if (_browserOptions.lefttoright) {
-        [self.toolbar setItems:@[self.backButton, fixedSpaceButton, self.forwardButton, flexibleSpaceButton, self.closeButton]];
+        self.addressLabel.textAlignment = NSTextAlignmentCenter;
+        [self.toolbar setItems:@[self.backButton, flexibleSpaceButton, self.toolbarTitle, flexibleSpaceButton, self.forwardButton, fixedSpaceButton, self.closeButton]];
     } else {
-        [self.toolbar setItems:@[self.closeButton, flexibleSpaceButton, self.backButton, fixedSpaceButton, self.forwardButton]];
+        self.addressLabel.textAlignment = NSTextAlignmentCenter;
+        [self.toolbar setItems:@[self.closeButton, fixedSpaceButton, self.backButton, flexibleSpaceButton, self.toolbarTitle, flexibleSpaceButton, self.forwardButton]];
     }
     
     self.view.backgroundColor = [UIColor clearColor];
@@ -974,53 +1003,53 @@ BOOL isExiting = FALSE;
 
 - (void)showLocationBar:(BOOL)show
 {
-    CGRect locationbarFrame = self.addressLabel.frame;
-    
-    BOOL toolbarVisible = !self.toolbar.hidden;
-    
-    // prevent double show/hide
-    if (show == !(self.addressLabel.hidden)) {
-        return;
-    }
-    
-    if (show) {
-        self.addressLabel.hidden = NO;
-        
-        if (toolbarVisible) {
-            // toolBar at the bottom, leave as is
-            // put locationBar on top of the toolBar
-            
-            CGRect webViewBounds = self.view.bounds;
-            webViewBounds.size.height -= FOOTER_HEIGHT;
-            [self setWebViewFrame:webViewBounds];
-            
-            locationbarFrame.origin.y = webViewBounds.size.height;
-            self.addressLabel.frame = locationbarFrame;
-        } else {
-            // no toolBar, so put locationBar at the bottom
-            
-            CGRect webViewBounds = self.view.bounds;
-            webViewBounds.size.height -= LOCATIONBAR_HEIGHT;
-            [self setWebViewFrame:webViewBounds];
-            
-            locationbarFrame.origin.y = webViewBounds.size.height;
-            self.addressLabel.frame = locationbarFrame;
-        }
-    } else {
-        self.addressLabel.hidden = YES;
-        
-        if (toolbarVisible) {
-            // locationBar is on top of toolBar, hide locationBar
-            
-            // webView take up whole height less toolBar height
-            CGRect webViewBounds = self.view.bounds;
-            webViewBounds.size.height -= TOOLBAR_HEIGHT;
-            [self setWebViewFrame:webViewBounds];
-        } else {
-            // no toolBar, expand webView to screen dimensions
-            [self setWebViewFrame:self.view.bounds];
-        }
-    }
+//    CGRect locationbarFrame = self.addressLabel.frame;
+//
+//    BOOL toolbarVisible = !self.toolbar.hidden;
+//
+//    // prevent double show/hide
+//    if (show == !(self.addressLabel.hidden)) {
+//        return;
+//    }
+//
+//    if (show) {
+//        self.addressLabel.hidden = NO;
+//
+//        if (toolbarVisible) {
+//            // toolBar at the bottom, leave as is
+//            // put locationBar on top of the toolBar
+//
+//            CGRect webViewBounds = self.view.bounds;
+//            webViewBounds.size.height -= FOOTER_HEIGHT;
+//            [self setWebViewFrame:webViewBounds];
+//
+//            locationbarFrame.origin.y = webViewBounds.size.height;
+//            self.addressLabel.frame = locationbarFrame;
+//        } else {
+//            // no toolBar, so put locationBar at the bottom
+//
+//            CGRect webViewBounds = self.view.bounds;
+//            webViewBounds.size.height -= LOCATIONBAR_HEIGHT;
+//            [self setWebViewFrame:webViewBounds];
+//
+//            locationbarFrame.origin.y = webViewBounds.size.height;
+//            self.addressLabel.frame = locationbarFrame;
+//        }
+//    } else {
+//        self.addressLabel.hidden = YES;
+//
+//        if (toolbarVisible) {
+//            // locationBar is on top of toolBar, hide locationBar
+//
+//            // webView take up whole height less toolBar height
+//            CGRect webViewBounds = self.view.bounds;
+//            webViewBounds.size.height -= TOOLBAR_HEIGHT;
+//            [self setWebViewFrame:webViewBounds];
+//        } else {
+//            // no toolBar, expand webView to screen dimensions
+//            [self setWebViewFrame:self.view.bounds];
+//        }
+//    }
 }
 
 - (void)showToolBar:(BOOL)show : (NSString *) toolbarPosition
