@@ -37,9 +37,8 @@
 #define    IAB_BRIDGE_NAME @"cordova_iab"
 
 #define    TOOLBAR_HEIGHT 44.0
-//#define    LOCATIONBAR_HEIGHT 21.0
-#define    LOCATIONBAR_HEIGHT 0.0
-#define    FOOTER_HEIGHT ((TOOLBAR_HEIGHT) + (LOCATIONBAR_HEIGHT))
+#define    LOCATIONBAR_HEIGHT 21.0
+#define    FOOTER_HEIGHT TOOLBAR_HEIGHT
 
 #pragma mark CDVWKInAppBrowser
 
@@ -1087,7 +1086,7 @@ BOOL isExiting = FALSE;
             webViewBounds.origin.y += toolbarFrame.size.height;
             [self setWebViewFrame:webViewBounds];
         } else {
-            toolbarFrame.origin.y = (webViewBounds.size.height + LOCATIONBAR_HEIGHT);
+            // toolbarFrame.origin.y = (webViewBounds.size.height + LOCATIONBAR_HEIGHT);
         }
         [self setWebViewFrame:webViewBounds];
         
@@ -1100,7 +1099,7 @@ BOOL isExiting = FALSE;
             
             // webView take up whole height less locationBar height
             CGRect webViewBounds = self.view.bounds;
-            webViewBounds.size.height -= LOCATIONBAR_HEIGHT;
+            // webViewBounds.size.height -= LOCATIONBAR_HEIGHT;
             [self setWebViewFrame:webViewBounds];
             
             // move locationBar down
