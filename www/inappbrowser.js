@@ -93,6 +93,14 @@
 
         setLayout: function (x, y, width, height) {
             exec(null, null, 'InAppBrowser', 'setLayout', [x, y, width, height]);
+        },
+
+        goBack: function () {
+            exec(null, null, 'InAppBrowser', 'goBack', []);
+        },
+
+        goForward: function () {
+            exec(null, null, 'InAppBrowser', 'goForward', []);
         }
     };
 

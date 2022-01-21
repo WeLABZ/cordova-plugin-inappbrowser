@@ -436,6 +436,16 @@ static CDVWKInAppBrowser* instance = nil;
     // }
 }
 
+- (void)goBack:(CDVInvokedUrlCommand*)command
+{
+    [self.inAppBrowserViewController goBack];
+}
+
+- (void)goForward:(CDVInvokedUrlCommand*)command
+{
+    [self.inAppBrowserViewController goForward];
+}
+
 // This is a helper method for the inject{Script|Style}{Code|File} API calls, which
 // provides a consistent method for injecting JavaScript code into the document.
 //

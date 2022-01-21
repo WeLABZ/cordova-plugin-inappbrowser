@@ -48,6 +48,8 @@
 - (void)hide:(CDVInvokedUrlCommand*)command;
 - (void)loadAfterBeforeload:(CDVInvokedUrlCommand*)command;
 - (void)setLayout:(CDVInvokedUrlCommand*)command;
+- (void)goBack:(CDVInvokedUrlCommand*)command;
+- (void)goForward:(CDVInvokedUrlCommand*)command;
 
 @end
 
