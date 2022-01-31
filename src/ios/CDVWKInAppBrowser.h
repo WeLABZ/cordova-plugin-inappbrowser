@@ -48,6 +48,8 @@
 - (void)hide:(CDVInvokedUrlCommand*)command;
 - (void)loadAfterBeforeload:(CDVInvokedUrlCommand*)command;
 - (void)setLayout:(CDVInvokedUrlCommand*)command;
+- (void)sendAuthBasic:(CDVInvokedUrlCommand*)command;
+- (void)cancelAuthBasic:(CDVInvokedUrlCommand*)command;
 - (void)goBack:(CDVInvokedUrlCommand*)command;
 - (void)goForward:(CDVInvokedUrlCommand*)command;
 
@@ -73,12 +75,18 @@
 @property (nonatomic, weak) id <CDVScreenOrientationDelegate> orientationDelegate;
 @property (nonatomic, weak) CDVWKInAppBrowser* navigationDelegate;
 @property (nonatomic) NSURL* currentURL;
+@property (nonatomic, weak) NSURLAuthenticationChallenge* authBasicChallenge;
+@property (nonatomic, strong) void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential);
 
 - (void)close;
 - (void)navigateTo:(NSURL*)url;
 - (void)showLocationBar:(BOOL)show;
 - (void)showToolBar:(BOOL)show : (NSString *) toolbarPosition;
+- (void)goBack;
+- (void)goForward;
 - (void)setCloseButtonTitle:(NSString*)title : (NSString*) colorString : (int) buttonIndex;
+- (void)sendAuthBasic:(NSString*)username : (NSString*) password;
+- (void)cancelAuthBasic;
 
 - (id)initWithBrowserOptions: (CDVInAppBrowserOptions*) browserOptions andSettings:(NSDictionary*) settings;
 

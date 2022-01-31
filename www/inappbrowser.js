@@ -33,7 +33,8 @@
             loaderror: channel.create('loaderror'),
             exit: channel.create('exit'),
             customscheme: channel.create('customscheme'),
-            message: channel.create('message')
+            message: channel.create('message'),
+            authbasic: channel.create('authbasic'),
         };
     }
 
@@ -93,6 +94,14 @@
 
         setLayout: function (x, y, width, height) {
             exec(null, null, 'InAppBrowser', 'setLayout', [x, y, width, height]);
+        },
+
+        sendAuthBasic: function (username, password) {
+            exec(null, null, 'InAppBrowser', 'sendAuthBasic', [username, password]);
+        },
+
+        cancelAuthBasic: function () {
+            exec(null, null, 'InAppBrowser', 'cancelAuthBasic', []);
         },
 
         goBack: function () {

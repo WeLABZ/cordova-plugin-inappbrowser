@@ -118,6 +118,7 @@ public class InAppBrowser extends CordovaPlugin {
     private static final String BEFORELOAD = "beforeload";
     private static final String FULLSCREEN = "fullscreen";
 
+    public static final String AUTHBASIC_EVENT = "authbasic";
     public static final String X = "x";
     public static final String Y = "y";
     public static final String WIDTH = "width";
@@ -371,6 +372,24 @@ public class InAppBrowser extends CordovaPlugin {
             PluginResult pluginResult = new PluginResult(PluginResult.Status.OK);
             pluginResult.setKeepCallback(true);
             this.callbackContext.sendPluginResult(pluginResult);
+        }
+        else if (action.equals("sendAuthBasic")) {
+            final String username = args.getString(0);
+            final String password = args.getString(1);
+
+            currentClient.sendAuthBasic(username, password);
+
+            PluginResult pluginResult = new PluginResult(PluginResult.Status.OK);
+            pluginResult.setKeepCallback(true);
+            this.callbackContext.sendPluginResult(pluginResult);
+        }
+        else if (action.equals("cancelAuthBasic")) {
+            currentClient.cancelAuthBasic();
+
+            PluginResult pluginResult = new PluginResult(PluginResult.Status.OK);
+            pluginResult.setKeepCallback(true);
+            this.callbackContext.sendPluginResult(pluginResult);
+
         }
         else if (action.equals("goBack")) {
             this.cordova.getActivity().runOnUiThread(new Runnable() {
@@ -1180,6 +1199,11 @@ public class InAppBrowser extends CordovaPlugin {
         String beforeload;
         boolean waitForBeforeload;
 
+        private WebView authBasicView;
+        private HttpAuthHandler authBasicHandler;
+        private String authBasicHost;
+        private String authBasicRealm;
+
         /**
          * Constructor.
          *
@@ -1352,6 +1376,38 @@ public class InAppBrowser extends CordovaPlugin {
             return override;
         }
 
+        public boolean sendAuthBasic(String username, String password) {
+            WebView authBasicView = this.authBasicView;
+            HttpAuthHandler authBasicHandler = this.authBasicHandler;
+            String authBasicHost = this.authBasicHost;
+            String authBasicRealm = this.authBasicRealm;
+
+            this.authBasicView = null;
+            this.authBasicHandler = null;
+            this.authBasicHost = null;
+            this.authBasicRealm = null;
+
+            authBasicHandler.proceed(username, password);
+
+            return true;
+        }
+
+        public boolean cancelAuthBasic() {
+            WebView authBasicView = this.authBasicView;
+            HttpAuthHandler authBasicHandler = this.authBasicHandler;
+            String authBasicHost = this.authBasicHost;
+            String authBasicRealm = this.authBasicRealm;
+
+            this.authBasicView = null;
+            this.authBasicHandler = null;
+            this.authBasicHost = null;
+            this.authBasicRealm = null;
+
+            super.onReceivedHttpAuthRequest(authBasicView, authBasicHandler, authBasicHost, authBasicRealm);
+
+            return true;
+        }
+
         private boolean sendBeforeLoad(String url, String method) {
             try {
                 JSONObject obj = new JSONObject();
@@ -1363,6 +1419,31 @@ public class InAppBrowser extends CordovaPlugin {
                 sendUpdate(obj, true);
                 return true;
             } catch (JSONException ex) {
+                LOG.e(LOG_TAG, "URI passed in has caused a JSON error.");
+            }
+            return false;
+        }
+
+        private boolean sendAuthBasicEvent(WebView view, HttpAuthHandler handler, String host, String realm) {
+            try {
+                this.authBasicView = view;
+                this.authBasicHandler = handler;
+                this.authBasicHost = host;
+                this.authBasicRealm = realm;
+
+                JSONObject obj = new JSONObject();
+                obj.put("type", AUTHBASIC_EVENT);
+                obj.put("host", host);
+                obj.put("realm", realm);
+
+                sendUpdate(obj, true);
+                return true;
+            } catch (JSONException ex) {
+                this.authBasicView = null;
+                this.authBasicHandler = null;
+                this.authBasicHost = null;
+                this.authBasicRealm = null;
+
                 LOG.e(LOG_TAG, "URI passed in has caused a JSON error.");
             }
             return false;
@@ -1535,8 +1616,10 @@ public class InAppBrowser extends CordovaPlugin {
                 return;
             }
 
+            sendAuthBasicEvent(view, handler, host, realm);
+
             // By default handle 401 like we'd normally do!
-            super.onReceivedHttpAuthRequest(view, handler, host, realm);
+            // super.onReceivedHttpAuthRequest(view, handler, host, realm);
         }
     }
 }

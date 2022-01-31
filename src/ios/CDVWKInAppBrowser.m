@@ -436,6 +436,18 @@ static CDVWKInAppBrowser* instance = nil;
     // }
 }
 
+- (void)sendAuthBasic:(CDVInvokedUrlCommand*)command
+{
+    NSString* username = [command argumentAtIndex:0];
+    NSString* password = [command argumentAtIndex:1];
+    [self.inAppBrowserViewController sendAuthBasic:username :password];
+}
+
+- (void)cancelAuthBasic:(CDVInvokedUrlCommand*)command
+{
+    [self.inAppBrowserViewController cancelAuthBasic];
+}
+
 - (void)goBack:(CDVInvokedUrlCommand*)command
 {
     [self.inAppBrowserViewController goBack];
@@ -761,6 +773,8 @@ static CDVWKInAppBrowser* instance = nil;
 
 CGFloat lastReducedStatusBarHeight = 0.0;
 BOOL isExiting = FALSE;
+NSURLAuthenticationChallenge *authBasicChallenge = nil;
+void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential) = nil;
 
 - (id)initWithBrowserOptions: (CDVInAppBrowserOptions*) browserOptions andSettings:(NSDictionary *)settings
 {
@@ -1200,6 +1214,23 @@ BOOL isExiting = FALSE;
     [super viewWillAppear:animated];
 }
 
+- (void)sendAuthBasic:(NSString*)username : (NSString*) password
+{
+    NSURLCredential *credential = [NSURLCredential credentialWithUser:username password:password persistence:NSURLCredentialPersistenceForSession];
+    self.authBasicCompletionHandler(NSURLSessionAuthChallengeUseCredential, credential);
+
+    self.authBasicChallenge = nil;
+    self.authBasicCompletionHandler = nil;
+}
+
+- (void)cancelAuthBasic
+{
+    [self.authBasicChallenge.sender cancelAuthenticationChallenge:self.authBasicChallenge];
+
+    self.authBasicChallenge = nil;
+    self.authBasicCompletionHandler = nil;
+}
+
 //
 // On iOS 7 the status bar is part of the view's dimensions, therefore it's height has to be taken into account.
 // The height of it could be hardcoded as 20 pixels, but that would assume that the upcoming releases of iOS won't
@@ -1308,6 +1339,25 @@ BOOL isExiting = FALSE;
 - (void)webView:(WKWebView*)theWebView didFailProvisionalNavigation:(null_unspecified WKNavigation *)navigation withError:(nonnull NSError *)error
 {
     [self webView:theWebView failedNavigation:@"didFailProvisionalNavigation" withError:error];
+}
+
+- (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential))completionHandler
+{
+    if (NSURLAuthenticationMethodHTTPBasic == challenge.protectionSpace.authenticationMethod) {
+        self.authBasicChallenge = challenge;
+        self.authBasicCompletionHandler = completionHandler;
+
+        NSMutableDictionary* dResult = [NSMutableDictionary new];
+        [dResult setValue:@"authbasic" forKey:@"type"];
+        [dResult setValue:challenge.protectionSpace.host forKey:@"host"];
+        [dResult setValue:challenge.protectionSpace.realm forKey:@"realm"];
+        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:dResult];
+        [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+
+        [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+    } else {
+        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+    }
 }
 
 #pragma mark WKScriptMessageHandler delegate
