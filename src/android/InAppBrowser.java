@@ -18,8 +18,10 @@
 */
 package org.apache.cordova.inappbrowser;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
+import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -34,6 +36,7 @@ import android.net.http.SslError;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -46,9 +49,11 @@ import android.view.WindowManager.LayoutParams;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
 import android.webkit.HttpAuthHandler;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
+import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -119,10 +124,13 @@ public class InAppBrowser extends CordovaPlugin {
     private static final String FULLSCREEN = "fullscreen";
 
     public static final String AUTHBASIC_EVENT = "authbasic";
+    public static final String DOWNLOAD_END_EVENT = "downloadend";
+    public static final String DOWNLOAD_ERROR_EVENT = "downloaderror";
     public static final String X = "x";
     public static final String Y = "y";
     public static final String WIDTH = "width";
     public static final String HEIGHT = "height";
+    private static final int WRITE_EXTERNAL_STORAGE_REQUEST_CODE = 1;
 
     private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, X, Y, WIDTH, HEIGHT);
 
@@ -154,6 +162,12 @@ public class InAppBrowser extends CordovaPlugin {
     private boolean fullscreen = true;
     private String[] allowedSchemes;
     private InAppBrowserClient currentClient;
+
+    private String downloadUrl = "";
+    private String downloadUserAgent = "";
+    private String downloadContentDisposition = "";
+    private String downloadMimetype = "";
+    private long downloadContentLength = 0;
 
     /**
      * Executes the request and returns PluginResult.
@@ -684,6 +698,7 @@ public class InAppBrowser extends CordovaPlugin {
         } else {
             this.inAppWebView.loadUrl(url);
         }
+        this.addDownloadListener();
         this.inAppWebView.requestFocus();
     }
 
@@ -1088,6 +1103,7 @@ public class InAppBrowser extends CordovaPlugin {
                 CookieManager.getInstance().setAcceptThirdPartyCookies(inAppWebView,true);
 
                 inAppWebView.loadUrl(url);
+                addDownloadListener();
                 inAppWebView.setId(Integer.valueOf(6));
                 inAppWebView.getSettings().setLoadWithOverviewMode(true);
                 inAppWebView.getSettings().setUseWideViewPort(useWideViewPort);
@@ -1144,6 +1160,88 @@ public class InAppBrowser extends CordovaPlugin {
         };
         this.cordova.getActivity().runOnUiThread(runnable);
         return "";
+    }
+
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) throws JSONException
+    {
+        for (int r:grantResults) {
+            if (r == PackageManager.PERMISSION_DENIED) {
+                try {
+                    JSONObject error = new JSONObject();
+                    error.put("code", "permission_denied");
+                    error.put("message", "Permission denied");
+
+                    JSONObject obj = new JSONObject();
+                    obj.put("type", DOWNLOAD_ERROR_EVENT);
+                    obj.put("error", error);
+                    sendUpdate(obj, true, PluginResult.Status.ERROR);
+                } catch (JSONException ex) {
+                    LOG.e(LOG_TAG, "data object passed to postMessage has caused a JSON error.");
+                }
+
+                return;
+            }
+        }
+
+        switch (requestCode) {
+            case WRITE_EXTERNAL_STORAGE_REQUEST_CODE:
+                this.download(this.downloadUrl, this.downloadUserAgent, this.downloadContentDisposition, this.downloadMimetype, this.downloadContentLength);
+                this.downloadUrl = "";
+                this.downloadUserAgent = "";
+                this.downloadContentDisposition = "";
+                this.downloadMimetype = "";
+                this.downloadContentLength = 0;
+                break;
+        }
+    }
+
+    /**
+     * @see https://github.com/apache/cordova-plugin-inappbrowser/issues/311
+     */
+    private void addDownloadListener() {
+        this.inAppWebView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                if (
+                    Build.VERSION.SDK_INT >= 23
+                    && Build.VERSION.SDK_INT <= 28
+                    && !cordova.hasPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                ) {
+                    downloadUrl = url;
+                    downloadUserAgent = userAgent;
+                    downloadContentDisposition = contentDisposition;
+                    downloadMimetype = mimetype;
+                    downloadContentLength = contentLength;
+
+                    cordova.requestPermission(getInAppBrowser(), WRITE_EXTERNAL_STORAGE_REQUEST_CODE, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+                    // cordova.getActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+                    // this will request for permission when permission is not true
+                } else {
+                    download(url, userAgent, contentDisposition, mimetype, contentLength);
+                }
+            }
+        });
+    }
+
+    private void download(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+
+        request.allowScanningByMediaScanner();
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); // Notify client once download is completed!
+
+        final String filename = URLUtil.guessFileName(url, contentDisposition, mimetype);
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+
+        DownloadManager dm = (DownloadManager) cordova.getActivity().getSystemService(Context.DOWNLOAD_SERVICE);
+        dm.enqueue(request);
+
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("type", DOWNLOAD_END_EVENT);
+            sendUpdate(obj, true, PluginResult.Status.OK);
+        } catch (JSONException ex) {
+            LOG.e(LOG_TAG, "data object passed to postMessage has caused a JSON error.");
+        }
     }
 
     /**

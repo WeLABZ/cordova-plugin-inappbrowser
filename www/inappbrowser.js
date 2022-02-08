@@ -35,6 +35,8 @@
             customscheme: channel.create('customscheme'),
             message: channel.create('message'),
             authbasic: channel.create('authbasic'),
+            downloadend: channel.create('downloadend'),
+            downloaderror: channel.create('downloaderror'),
         };
     }
 

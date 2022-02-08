@@ -1292,6 +1292,13 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
 
 - (void)webView:(WKWebView *)theWebView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
 {
+    if (@available(iOS 14.5, *)) {
+        if (navigationAction.shouldPerformDownload) {
+            decisionHandler(WKNavigationActionPolicyDownload);
+            return;
+        }
+    }
+
     NSURL *url = navigationAction.request.URL;
     NSURL *mainDocumentURL = navigationAction.request.mainDocumentURL;
     
@@ -1358,6 +1365,97 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     } else {
         completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
     }
+}
+
+- (void)webView:(WKWebView *)theWebView decidePolicyForNavigationResponse:(nonnull WKNavigationResponse *)navigationResponse decisionHandler:(nonnull void (^)(WKNavigationResponsePolicy))decisionHandler {
+    NSDictionary *headers = ((NSHTTPURLResponse *)navigationResponse.response).allHeaderFields;
+    NSString *contentType = [headers valueForKey:@"Content-Type"];
+    if (
+        navigationResponse.canShowMIMEType
+        && ![contentType isEqualToString:@"application/pdf"]
+    ) {
+        decisionHandler(WKNavigationResponsePolicyAllow);
+    } else {
+        if (@available(iOS 14.5, *)) {
+            decisionHandler(WKNavigationResponsePolicyDownload);
+        } else {
+            NSURL* downloadUrl = navigationResponse.response.URL;
+            NSURLSessionDataTask* dataTask = [NSURLSession.sharedSession dataTaskWithURL:downloadUrl completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
+                if (data != nil) {
+                    // Save to Documents
+                    NSString *documentPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
+                    NSString *filePath = [documentPath stringByAppendingPathComponent:navigationResponse.response.suggestedFilename];
+                    bool success = [data writeToFile:filePath atomically:YES];
+
+                    if (success) {
+                        NSMutableDictionary* dResult = [NSMutableDictionary new];
+                        [dResult setValue:@"downloadend" forKey:@"type"];
+                        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:dResult];
+                        [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+
+                        [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+                    } else {
+                        NSMutableDictionary* dError = [NSMutableDictionary new];
+                        [dError setValue:[NSString stringWithFormat:@"%d", nil] forKey:@"code"];
+                        [dError setValue:error.description forKey:@"message"];
+
+                        NSMutableDictionary* dResult = [NSMutableDictionary new];
+                        [dResult setValue:@"downloaderror" forKey:@"type"];
+                        [dResult setValue:dError forKey:@"error"];
+                        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:dResult];
+                        [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+
+                        [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+                    }
+                }
+            }];
+            [dataTask resume];
+
+            decisionHandler(WKNavigationResponsePolicyCancel);
+        }
+    }
+}
+
+- (void)webView:(WKWebView *)theWebView navigationAction:(WKNavigationAction *)navigationAction didBecomeDownload:(WKDownload *)download {
+    download.delegate = self;
+}
+
+- (void)webView:(WKWebView *)theWebView navigationResponse:(WKNavigationResponse *)navigationResponse didBecomeDownload:(WKDownload *)download {
+    download.delegate = self;
+}
+
+#pragma mark WKDownloadDelegate
+
+- (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response suggestedFilename:(NSString *)suggestedFilename completionHandler:(void (^)(NSURL * _Nullable))completionHandler {
+    // Save to Documents
+    NSString *documentPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
+    NSString *filePath = [documentPath stringByAppendingPathComponent:suggestedFilename];
+    NSURL* url = [NSURL fileURLWithPath:filePath];
+
+    completionHandler(url);
+}
+
+- (void)downloadDidFinish:(WKDownload *)download {
+    NSMutableDictionary* dResult = [NSMutableDictionary new];
+    [dResult setValue:@"downloadend" forKey:@"type"];
+    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:dResult];
+    [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+
+    [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+}
+
+- (void) download:(WKDownload *)download didFailWithError:(NSError *)error resumeData:(NSData *)resumeData {
+    NSMutableDictionary* dError = [NSMutableDictionary new];
+    [dError setValue:[NSString stringWithFormat:@"%d", error.code] forKey:@"code"];
+    [dError setValue:error.description forKey:@"message"];
+
+    NSMutableDictionary* dResult = [NSMutableDictionary new];
+    [dResult setValue:@"downloaderror" forKey:@"type"];
+    [dResult setValue:dError forKey:@"error"];
+    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:dResult];
+    [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+
+    [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
 }
 
 #pragma mark WKScriptMessageHandler delegate
