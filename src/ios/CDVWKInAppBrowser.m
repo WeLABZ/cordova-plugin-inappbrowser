@@ -288,63 +288,7 @@ static CDVWKInAppBrowser* instance = nil;
         _previousStatusBarStyle = [UIApplication sharedApplication].statusBarStyle;
     }
     
-    __block CDVInAppBrowserNavigationController* nav = [[CDVInAppBrowserNavigationController alloc]
-                                                        initWithRootViewController:self.inAppBrowserViewController];
-    nav.orientationDelegate = self.inAppBrowserViewController;
-    nav.navigationBarHidden = YES;
-    nav.modalPresentationStyle = self.inAppBrowserViewController.modalPresentationStyle;
-    
-    __weak CDVWKInAppBrowser* weakSelf = self;
-    
-    // Run later to avoid the "took a long time" log message.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (weakSelf.inAppBrowserViewController != nil) {
-            float osVersion = [[[UIDevice currentDevice] systemVersion] floatValue];
-            __strong __typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf->tmpWindow) {
-                CGRect frame = [[UIScreen mainScreen] bounds];
-                if(initHidden && osVersion < 11){
-                   frame.origin.x = -10000;
-                }
-                    // Set Dimensions
-                double x        = self->_CDVBrowserOptions.x      != nil ? [self->_CDVBrowserOptions.x       doubleValue] : frame.origin.x;
-                double y        = self->_CDVBrowserOptions.y      != nil ? [self->_CDVBrowserOptions.y       doubleValue] : frame.origin.y;
-                double width    = self->_CDVBrowserOptions.width  != nil ? [self->_CDVBrowserOptions.width   doubleValue] : (frame.size.width - x); // For taking in consideration if (x) is set , custom width not set
-                double height   = self->_CDVBrowserOptions.height != nil ? [self->_CDVBrowserOptions.height  doubleValue] : (frame.size.height - y); // For taking in consideration if (y) is set , custom height not set
-                
-                // Set Updated Frame
-                frame   = CGRectMake(x , y , width , height );
-
-                strongSelf->tmpWindow = [[UIWindow alloc] initWithFrame:frame];
-
-                BOOL locationbarVisible = !self.inAppBrowserViewController.addressLabel.hidden;
-                BOOL toolbarVisible = !self.inAppBrowserViewController.toolbar.hidden;
-
-                if (self->_CDVBrowserOptions.location || self->_CDVBrowserOptions.toolbar) {
-                    CGRect webViewBounds = self.inAppBrowserViewController.webView.bounds;
-                    webViewBounds.size.height = height;
-
-                    if (locationbarVisible) {
-                        webViewBounds.size.height -= LOCATIONBAR_HEIGHT;
-                    }
-
-                    if (toolbarVisible) {
-                        webViewBounds.size.height -= TOOLBAR_HEIGHT;
-                    }
-
-                    [self.inAppBrowserViewController.webView setFrame:webViewBounds];
-                }
-            }
-            UIViewController *tmpController = [[UIViewController alloc] init];
-            [strongSelf->tmpWindow setRootViewController:tmpController];
-            [strongSelf->tmpWindow setWindowLevel:UIWindowLevelNormal];
-
-            if(!initHidden || osVersion < 11){
-                [self->tmpWindow makeKeyAndVisible];
-            }
-            [tmpController presentViewController:nav animated:!noAnimate completion:nil];
-        }
-    });
+    [self setLayout:initHidden :noAnimate];
 }
 
 - (void)hide:(CDVInvokedUrlCommand*)command
@@ -416,24 +360,95 @@ static CDVWKInAppBrowser* instance = nil;
 
 - (void)setLayout:(CDVInvokedUrlCommand*)command
 {
-    NSLog(@"Method not implemented!");
+    self->_CDVBrowserOptions.x = [command argumentAtIndex:0];
+    self->_CDVBrowserOptions.y = [command argumentAtIndex:1];
+    self->_CDVBrowserOptions.width = [command argumentAtIndex:2];
+    self->_CDVBrowserOptions.height = [command argumentAtIndex:3];
 
-    // NSString* xString = [command argumentAtIndex:0];
-    // NSString* yString = [command argumentAtIndex:1];
-    // NSString* widthString = [command argumentAtIndex:2];
-    // NSString* heightString = [command argumentAtIndex:3];
+    if (_previousStatusBarStyle == -1) {
+        return;
+    }
 
-    // if (!self->tmpWindow) {
-    //     double x      = xString != nil ? [xString doubleValue] : self->tmpWindow.frame.origin.x;
-    //     double y      = yString != nil ? [xString doubleValue] : self->tmpWindow.frame.origin.y;
-    //     double width  = widthString != nil ? [xString doubleValue] : (self->tmpWindow.frame.size.width - x); // For taking in consideration if (x) is set , custom width not set
-    //     double height = heightString != nil ? [xString doubleValue] : (self->tmpWindow.frame.size.height - y); // For taking in consideration if (y) is set , custom height not set
-        
-    //     self->tmpWindow.frame = CGRectMake(x, y, width, height);
-    // } else {
-    //     NSLog(@"Tried to invoke setLayout on IAB but tmpWindow frame is nil.");
-    //     return;
-    // }
+    [self setLayout:NO :YES];
+}
+
+- (void)setLayout:(bool)initHidden :(bool)noAnimate
+{
+    __block CDVInAppBrowserNavigationController* nav = [[CDVInAppBrowserNavigationController alloc]
+                                                        initWithRootViewController:self.inAppBrowserViewController];
+    nav.orientationDelegate = self.inAppBrowserViewController;
+    nav.navigationBarHidden = YES;
+    nav.modalPresentationStyle = self.inAppBrowserViewController.modalPresentationStyle;
+
+    __weak CDVWKInAppBrowser* weakSelf = self;
+
+    // Run later to avoid the "took a long time" log message.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (weakSelf.inAppBrowserViewController != nil) {
+            float osVersion = [[[UIDevice currentDevice] systemVersion] floatValue];
+            __strong __typeof(weakSelf) strongSelf = weakSelf;
+
+            CGRect frame = [[UIScreen mainScreen] bounds];
+            if(initHidden && osVersion < 11){
+               frame.origin.x = -10000;
+            }
+
+            frame = [strongSelf calcWindowFrame:frame];
+            if (!strongSelf->tmpWindow) {
+                strongSelf->tmpWindow = [[UIWindow alloc] initWithFrame:frame];
+            } else {
+                strongSelf->tmpWindow.frame = frame;
+            }
+
+            [strongSelf.inAppBrowserViewController rePositionViews];
+
+            UIViewController *tmpController = [[UIViewController alloc] init];
+            [strongSelf->tmpWindow setRootViewController:tmpController];
+            [strongSelf->tmpWindow setWindowLevel:UIWindowLevelNormal];
+
+            if(!initHidden || osVersion < 11){
+                [strongSelf->tmpWindow makeKeyAndVisible];
+            }
+
+            [tmpController presentViewController:nav animated:!noAnimate completion:nil];
+        }
+    });
+}
+
+- (CGRect)calcWindowFrame:(CGRect) frame
+{
+    CGRect bounds = [[UIScreen mainScreen] bounds];
+
+    double x        = self->_CDVBrowserOptions.x      != nil ? [self->_CDVBrowserOptions.x       doubleValue] : frame.origin.x;
+    double y        = self->_CDVBrowserOptions.y      != nil ? [self->_CDVBrowserOptions.y       doubleValue] : frame.origin.y;
+    double width    = self->_CDVBrowserOptions.width  != nil ? [self->_CDVBrowserOptions.width   doubleValue] : (frame.size.width - x); // For taking in consideration if (x) is set , custom width not set
+    double height   = self->_CDVBrowserOptions.height != nil ? [self->_CDVBrowserOptions.height  doubleValue] : (frame.size.height - y); // For taking in consideration if (y) is set , custom height not set
+
+    return CGRectMake(x , y , width , height );
+}
+
+- (CGRect)calcWebviewFrame:(CGRect) windowFrame
+{
+    BOOL locationbarVisible = !self.inAppBrowserViewController.addressLabel.hidden;
+    BOOL toolbarVisible = !self.inAppBrowserViewController.toolbar.hidden;
+
+    CGRect webViewBounds = self.inAppBrowserViewController.webView.bounds;
+    webViewBounds.origin.x = windowFrame.origin.x;
+    webViewBounds.origin.y = windowFrame.origin.y;
+    webViewBounds.size.width = windowFrame.size.width;
+    webViewBounds.size.height = windowFrame.size.height;
+
+    if (self->_CDVBrowserOptions.location || self->_CDVBrowserOptions.toolbar) {
+        if (locationbarVisible) {
+            // webViewBounds.size.height -= LOCATIONBAR_HEIGHT;
+        }
+
+        if (toolbarVisible) {
+            webViewBounds.size.height -= TOOLBAR_HEIGHT;
+        }
+    }
+
+    return webViewBounds;
 }
 
 - (void)sendAuthBasic:(CDVInvokedUrlCommand*)command
@@ -1242,6 +1257,9 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
 
 - (void) rePositionViews {
     CGRect viewBounds = [self.webView bounds];
+    viewBounds = [self.navigationDelegate calcWindowFrame:viewBounds];
+    viewBounds = [self.navigationDelegate calcWebviewFrame:viewBounds];
+
     CGFloat statusBarHeight = [self getStatusBarOffset];
     
     // orientation portrait or portraitUpsideDown: status bar is on the top and web view is to be aligned to the bottom of the status bar
@@ -1249,15 +1267,14 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     viewBounds.origin.y = statusBarHeight;
     
     // account for web view height portion that may have been reduced by a previous call to this method
-    viewBounds.size.height = viewBounds.size.height - statusBarHeight + lastReducedStatusBarHeight;
-    lastReducedStatusBarHeight = statusBarHeight;
+    viewBounds.size.height = viewBounds.size.height - statusBarHeight;
     
     if ((_browserOptions.toolbar) && ([_browserOptions.toolbarposition isEqualToString:kInAppBrowserToolbarBarPositionTop])) {
         // if we have to display the toolbar on top of the web view, we need to account for its height
         viewBounds.origin.y += TOOLBAR_HEIGHT;
         self.toolbar.frame = CGRectMake(self.toolbar.frame.origin.x, statusBarHeight, self.toolbar.frame.size.width, self.toolbar.frame.size.height);
     }
-    
+
     self.webView.frame = viewBounds;
 }
 
@@ -1490,7 +1507,8 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
 {
     [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context)
     {
-        [self rePositionViews];
+//        [self rePositionViews];
+        [self.navigationDelegate setLayout:NO :YES];
     } completion:^(id<UIViewControllerTransitionCoordinatorContext> context)
     {
 

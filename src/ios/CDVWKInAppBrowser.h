@@ -87,6 +87,7 @@
 - (void)setCloseButtonTitle:(NSString*)title : (NSString*) colorString : (int) buttonIndex;
 - (void)sendAuthBasic:(NSString*)username : (NSString*) password;
 - (void)cancelAuthBasic;
+- (void) rePositionViews;
 
 - (id)initWithBrowserOptions: (CDVInAppBrowserOptions*) browserOptions andSettings:(NSDictionary*) settings;
 
