@@ -1162,7 +1162,7 @@ public class InAppBrowser extends CordovaPlugin {
         return "";
     }
 
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) throws JSONException
+    public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults) throws JSONException
     {
         for (int r:grantResults) {
             if (r == PackageManager.PERMISSION_DENIED) {
