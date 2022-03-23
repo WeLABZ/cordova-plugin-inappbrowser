@@ -1240,7 +1240,13 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
 
 - (void)cancelAuthBasic
 {
-    [self.authBasicChallenge.sender cancelAuthenticationChallenge:self.authBasicChallenge];
+    if (nil != self.authBasicChallenge ) {
+        [self.authBasicChallenge.sender cancelAuthenticationChallenge:self.authBasicChallenge];
+    }
+
+    if (nil != self.authBasicCompletionHandler ) {
+        self.authBasicCompletionHandler(NSURLSessionAuthChallengeCancelAuthenticationChallenge, nil);
+    }
 
     self.authBasicChallenge = nil;
     self.authBasicCompletionHandler = nil;
