@@ -1226,6 +1226,9 @@ public class InAppBrowser extends CordovaPlugin {
     private void download(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
 
+        String cookieString = CookieManager.getInstance().getCookie(url);
+        request.addRequestHeader("cookie", cookieString);
+
         request.allowScanningByMediaScanner();
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); // Notify client once download is completed!
 
