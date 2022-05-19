@@ -43,6 +43,7 @@
 + (id) getInstance;
 - (void)open:(CDVInvokedUrlCommand*)command;
 - (void)close:(CDVInvokedUrlCommand*)command;
+- (void)setOptions:(CDVInvokedUrlCommand*)command;
 - (void)injectScriptCode:(CDVInvokedUrlCommand*)command;
 - (void)show:(CDVInvokedUrlCommand*)command;
 - (void)hide:(CDVInvokedUrlCommand*)command;
@@ -78,6 +79,7 @@
 @property (nonatomic, weak) NSURLAuthenticationChallenge* authBasicChallenge;
 @property (nonatomic, strong) void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential);
 
+- (void)updateBrowserOptions: (CDVInAppBrowserOptions*) browserOptions;
 - (void)close;
 - (void)navigateTo:(NSURL*)url;
 - (void)showLocationBar:(BOOL)show;

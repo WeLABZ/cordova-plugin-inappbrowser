@@ -94,6 +94,10 @@
             }
         },
 
+        setOptions: function (options) {
+            exec(null, null, 'InAppBrowser', 'setOptions', [options]);
+        },
+
         setLayout: function (x, y, width, height) {
             exec(null, null, 'InAppBrowser', 'setLayout', [x, y, width, height]);
         },

@@ -354,6 +354,9 @@ public class InAppBrowser extends CordovaPlugin {
             pluginResult.setKeepCallback(true);
             this.callbackContext.sendPluginResult(pluginResult);
         }
+        else if (action.equals("setOptions")) {
+            // TODO: Implement this action
+        }
         else if (action.equals("setLayout")) {
             this.cordova.getActivity().runOnUiThread(new Runnable() {
                 /**

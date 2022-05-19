@@ -358,12 +358,23 @@ static CDVWKInAppBrowser* instance = nil;
     [self.inAppBrowserViewController navigateTo:url];
 }
 
+- (void)setOptions:(CDVInvokedUrlCommand *)command
+{
+    NSString* options = [command argumentAtIndex:0 withDefault:@"" andClass:[NSString class]];
+    self.CDVBrowserOptions = [CDVInAppBrowserOptions parseOptions:options];
+    [self.inAppBrowserViewController updateBrowserOptions: self->_CDVBrowserOptions];
+
+    [self.inAppBrowserViewController showToolBar:self->_CDVBrowserOptions.toolbar :self->_CDVBrowserOptions.toolbarposition];
+}
+
 - (void)setLayout:(CDVInvokedUrlCommand*)command
 {
     self->_CDVBrowserOptions.x = [command argumentAtIndex:0];
     self->_CDVBrowserOptions.y = [command argumentAtIndex:1];
     self->_CDVBrowserOptions.width = [command argumentAtIndex:2];
     self->_CDVBrowserOptions.height = [command argumentAtIndex:3];
+
+    [self.inAppBrowserViewController updateBrowserOptions: self->_CDVBrowserOptions];
 
     if (_previousStatusBarStyle == -1) {
         return;
@@ -746,36 +757,46 @@ static CDVWKInAppBrowser* instance = nil;
     if (self.callbackId != nil) {
         CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
                                                       messageAsDictionary:@{@"type":@"exit"}];
-        [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
-        self.callbackId = nil;
-    }
-    
-    [self.inAppBrowserViewController.configuration.userContentController removeScriptMessageHandlerForName:IAB_BRIDGE_NAME];
-    self.inAppBrowserViewController.configuration = nil;
-    
-    [self.inAppBrowserViewController.webView stopLoading];
-    [self.inAppBrowserViewController.webView removeFromSuperview];
-    [self.inAppBrowserViewController.webView setUIDelegate:nil];
-    [self.inAppBrowserViewController.webView setNavigationDelegate:nil];
-    self.inAppBrowserViewController.webView = nil;
-    
-    // Set navigationDelegate to nil to ensure no callbacks are received from it.
-    self.inAppBrowserViewController.navigationDelegate = nil;
-    self.inAppBrowserViewController = nil;
-
-    // Set tmpWindow to hidden to make main webview responsive to touch again
-    // Based on https://stackoverflow.com/questions/4544489/how-to-remove-a-uiwindow
-    self->tmpWindow.hidden = YES;
-    self->tmpWindow = nil;
-
-    if (IsAtLeastiOSVersion(@"7.0")) {
-        if (_previousStatusBarStyle != -1) {
-            [[UIApplication sharedApplication] setStatusBarStyle:_previousStatusBarStyle];
-            
+        
+        if (!IsAtLeastiOSVersion(@"15.0")) {
+            [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
         }
+
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
     }
     
-    _previousStatusBarStyle = -1; // this value was reset before reapplying it. caused statusbar to stay black on ios7
+    if (IsAtLeastiOSVersion(@"15.0")) {
+        if (self.callbackId != nil) {
+            self.callbackId = nil;
+        }
+    
+        [self.inAppBrowserViewController.configuration.userContentController removeScriptMessageHandlerForName:IAB_BRIDGE_NAME];
+        self.inAppBrowserViewController.configuration = nil;
+    
+        [self.inAppBrowserViewController.webView stopLoading];
+        [self.inAppBrowserViewController.webView removeFromSuperview];
+        [self.inAppBrowserViewController.webView setUIDelegate:nil];
+        [self.inAppBrowserViewController.webView setNavigationDelegate:nil];
+        self.inAppBrowserViewController.webView = nil;
+    
+        // Set navigationDelegate to nil to ensure no callbacks are received from it.
+        self.inAppBrowserViewController.navigationDelegate = nil;
+        self.inAppBrowserViewController = nil;
+
+        // Set tmpWindow to hidden to make main webview responsive to touch again
+        // Based on https://stackoverflow.com/questions/4544489/how-to-remove-a-uiwindow
+        self->tmpWindow.hidden = YES;
+        self->tmpWindow = nil;
+
+        if (IsAtLeastiOSVersion(@"7.0")) {
+            if (_previousStatusBarStyle != -1) {
+                [[UIApplication sharedApplication] setStatusBarStyle:_previousStatusBarStyle];
+            }
+        }
+    
+        _previousStatusBarStyle = -1; // this value was reset before reapplying it. caused statusbar to stay black on ios7
+    } else {
+    }
 }
 
 @end //CDVWKInAppBrowser
@@ -804,6 +825,11 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     }
     
     return self;
+}
+
+- (void)updateBrowserOptions: (CDVInAppBrowserOptions*) browserOptions
+{
+    _browserOptions = browserOptions;
 }
 
 -(void)dealloc {
@@ -861,10 +887,22 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     }
     
 
-    self.webView = [[WKWebView alloc] initWithFrame:webViewBounds configuration:configuration];
+    if (IsAtLeastiOSVersion(@"15.0")) {
+        self.webView = [[WKWebView alloc] initWithFrame:webViewBounds configuration:configuration];
     
-    [self.view addSubview:self.webView];
-    [self.view sendSubviewToBack:self.webView];
+        [self.view addSubview:self.webView];
+        [self.view sendSubviewToBack:self.webView];
+    } else {
+        if (nil == self.webView) {
+            self.webView = [[WKWebView alloc] initWithFrame:webViewBounds configuration:configuration];
+
+            [self.view addSubview:self.webView];
+        } else {
+            self.webView.frame = webViewBounds;
+        }
+
+        [self.view sendSubviewToBack:self.webView];
+    }
     
     
     self.webView.navigationDelegate = self;
@@ -1194,10 +1232,17 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     // Run later to avoid the "took a long time" log message.
     dispatch_async(dispatch_get_main_queue(), ^{
         isExiting = TRUE;
-        if ([weakSelf respondsToSelector:@selector(presentingViewController)]) {
-            [[weakSelf presentingViewController] dismissViewControllerAnimated:YES completion:nil];
+        if (IsAtLeastiOSVersion(@"15.0")) {
+            if ([weakSelf respondsToSelector:@selector(presentingViewController)]) {
+                [[weakSelf presentingViewController] dismissViewControllerAnimated:YES completion:nil];
+            } else {
+                [[weakSelf parentViewController] dismissViewControllerAnimated:YES completion:nil];
+            }
         } else {
-            [[weakSelf parentViewController] dismissViewControllerAnimated:YES completion:nil];
+            CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                                                          messageAsDictionary:@{@"type":@"exit"}];
+            [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+            [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
         }
     });
 }
@@ -1279,6 +1324,9 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
         // if we have to display the toolbar on top of the web view, we need to account for its height
         viewBounds.origin.y += TOOLBAR_HEIGHT;
         self.toolbar.frame = CGRectMake(self.toolbar.frame.origin.x, statusBarHeight, self.toolbar.frame.size.width, self.toolbar.frame.size.height);
+        if (!IsAtLeastiOSVersion(@"15.0")) {
+            self.addressLabel.frame = CGRectMake(self.addressLabel.frame.origin.x, 0, self.addressLabel.frame.size.width, self.addressLabel.frame.size.height);
+        }
     }
 
     self.webView.frame = viewBounds;
