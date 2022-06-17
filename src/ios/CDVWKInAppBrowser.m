@@ -1477,6 +1477,10 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
                         [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
 
                         [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            self.addressLabel.text = [self.currentURL absoluteString];
+                        });
                     }
                 }
             }];
@@ -1527,6 +1531,10 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
 
     [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.addressLabel.text = [self.currentURL absoluteString];
+    });
 }
 
 #pragma mark WKScriptMessageHandler delegate
