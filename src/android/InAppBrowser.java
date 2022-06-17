@@ -1378,6 +1378,11 @@ public class InAppBrowser extends CordovaPlugin {
                 errorMessage = "beforeload doesn't yet support POST requests";
             }
 
+            // Pas compris pourquoi cela a été mis à la fin de la fonction, ni pourquoi cela existe
+            if (useBeforeload) {
+                this.waitForBeforeload = true;
+            }
+
             // On first URL change, initiate JS callback. Only after the beforeload event, continue.
             if (useBeforeload && this.waitForBeforeload) {
                 if(sendBeforeLoad(url, method)) {
@@ -1474,9 +1479,9 @@ public class InAppBrowser extends CordovaPlugin {
                 }
             }
 
-            if (useBeforeload) {
-                this.waitForBeforeload = true;
-            }
+            // if (useBeforeload) {
+            //     this.waitForBeforeload = true;
+            // }
             return override;
         }
 
