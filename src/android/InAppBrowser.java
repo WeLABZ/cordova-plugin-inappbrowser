@@ -22,8 +22,10 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.Parcelable;
@@ -77,6 +79,8 @@ import org.apache.cordova.CordovaWebView;
 import org.apache.cordova.LOG;
 import org.apache.cordova.PluginManager;
 import org.apache.cordova.PluginResult;
+import org.apache.cordova.inappbrowser.file.FileHelper;
+import org.apache.cordova.inappbrowser.javascriptinterface.BlobDownloadJavaScriptInterface;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -124,6 +128,7 @@ public class InAppBrowser extends CordovaPlugin {
     private static final String FULLSCREEN = "fullscreen";
 
     public static final String AUTHBASIC_EVENT = "authbasic";
+    public static final String DOWNLOAD_START_EVENT = "downloadstart";
     public static final String DOWNLOAD_END_EVENT = "downloadend";
     public static final String DOWNLOAD_ERROR_EVENT = "downloaderror";
     public static final String X = "x";
@@ -163,11 +168,56 @@ public class InAppBrowser extends CordovaPlugin {
     private String[] allowedSchemes;
     private InAppBrowserClient currentClient;
 
+    private long dmDownloadID = 0;
+    private String dmDownloadPath = "";
+    private String dmDownloadMimeType = "";
     private String downloadUrl = "";
     private String downloadUserAgent = "";
     private String downloadContentDisposition = "";
     private String downloadMimetype = "";
     private long downloadContentLength = 0;
+    
+    private BroadcastReceiver onDownloadComplete = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context ctxt, Intent intent) {
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+            if (dmDownloadID == id) {
+                try {
+                    DownloadManager dm = (DownloadManager) cordova.getActivity().getSystemService(Context.DOWNLOAD_SERVICE);
+                    Uri downloadedFileUri = dm.getUriForDownloadedFile(dmDownloadID);
+
+                    String filePath = dmDownloadPath;
+                    if (null != downloadedFileUri) {
+                        filePath = FileHelper.getRealPathFromURI(cordova.getActivity().getApplicationContext(), downloadedFileUri);
+                    }
+
+                    JSONObject data = new JSONObject();
+                    data.put("path", filePath);
+                    data.put("mimeType", dmDownloadMimeType);
+
+                    JSONObject obj = new JSONObject();
+                    obj.put("type", InAppBrowser.DOWNLOAD_END_EVENT);
+                    obj.put("data", data);
+                    sendUpdate(obj, true);
+                } catch (JSONException ex) {
+                    LOG.e(LOG_TAG, "data object passed to postMessage has caused a JSON error.");
+                }
+
+                dmDownloadPath = "";
+                dmDownloadMimeType = "";
+            }
+        }
+    };
+
+
+    protected void pluginInitialize() {
+        super.pluginInitialize();
+
+        cordova.getActivity().registerReceiver(
+            onDownloadComplete,
+            new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        );
+    }
 
     /**
      * Executes the request and returns PluginResult.
@@ -473,6 +523,7 @@ public class InAppBrowser extends CordovaPlugin {
      * Stop listener.
      */
     public void onDestroy() {
+        // unregisterReceiver(onDownloadComplete);
         closeDialog();
     }
 
@@ -1075,6 +1126,7 @@ public class InAppBrowser extends CordovaPlugin {
 
                 settings.setMediaPlaybackRequiresUserGesture(mediaPlaybackRequiresUserGesture);
                 inAppWebView.addJavascriptInterface(new JsObject(), "cordova_iab");
+                inAppWebView.addJavascriptInterface(new BlobDownloadJavaScriptInterface(InAppBrowser.this, cordova.getActivity().getApplicationContext()), "BlobDownloadJavaScriptInterface");
 
                 String overrideUserAgent = preferences.getString("OverrideUserAgent", null);
                 String appendUserAgent = preferences.getString("AppendUserAgent", null);
@@ -1206,8 +1258,13 @@ public class InAppBrowser extends CordovaPlugin {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
                 if (
-                    Build.VERSION.SDK_INT >= 23
-                    && Build.VERSION.SDK_INT <= 28
+                    (
+                        (
+                            Build.VERSION.SDK_INT >= 23
+                            && Build.VERSION.SDK_INT <= 28
+                        )
+                        || BlobDownloadJavaScriptInterface.supports(url)
+                    )
                     && !cordova.hasPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 ) {
                     downloadUrl = url;
@@ -1227,26 +1284,36 @@ public class InAppBrowser extends CordovaPlugin {
     }
 
     private void download(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+        if (BlobDownloadJavaScriptInterface.supports(url)) {
+            String source = BlobDownloadJavaScriptInterface.getBase64StringFromBlobUrl(url);
+            String jsWrapper = String.format("(function(){prompt(JSON.stringify([eval(%%s)]), 'gap-iab://%s')})()", callbackContext.getCallbackId());
 
-        String cookieString = CookieManager.getInstance().getCookie(url);
-        request.addRequestHeader("cookie", cookieString);
+            LOG.d(LOG_TAG, "onDownloadStart");
+            injectDeferredObject(source, null);
 
-        request.allowScanningByMediaScanner();
-        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); // Notify client once download is completed!
+            try {
+                JSONObject obj = new JSONObject();
+                obj.put("type", DOWNLOAD_START_EVENT);
+                sendUpdate(obj, true, PluginResult.Status.OK);
+            } catch (JSONException ex) {
+                LOG.e(LOG_TAG, "data object passed to postMessage has caused a JSON error.");
+            }
+        } else {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
 
-        final String filename = URLUtil.guessFileName(url, contentDisposition, mimetype);
-        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+            String cookieString = CookieManager.getInstance().getCookie(url);
+            request.addRequestHeader("cookie", cookieString);
 
-        DownloadManager dm = (DownloadManager) cordova.getActivity().getSystemService(Context.DOWNLOAD_SERVICE);
-        dm.enqueue(request);
+            request.allowScanningByMediaScanner();
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); // Notify client once download is completed!
 
-        try {
-            JSONObject obj = new JSONObject();
-            obj.put("type", DOWNLOAD_END_EVENT);
-            sendUpdate(obj, true, PluginResult.Status.OK);
-        } catch (JSONException ex) {
-            LOG.e(LOG_TAG, "data object passed to postMessage has caused a JSON error.");
+            final String filename = URLUtil.guessFileName(url, contentDisposition, mimetype);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+
+            DownloadManager dm = (DownloadManager) cordova.getActivity().getSystemService(Context.DOWNLOAD_SERVICE);
+            dmDownloadID = dm.enqueue(request);
+            dmDownloadPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) + "/" + filename;
+            dmDownloadMimeType = mimetype;
         }
     }
 
@@ -1255,7 +1322,7 @@ public class InAppBrowser extends CordovaPlugin {
      *
      * @param obj a JSONObject contain event payload information
      */
-    private void sendUpdate(JSONObject obj, boolean keepCallback) {
+    public void sendUpdate(JSONObject obj, boolean keepCallback) {
         sendUpdate(obj, keepCallback, PluginResult.Status.OK);
     }
 

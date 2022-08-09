@@ -75,6 +75,7 @@
 
 @property (nonatomic, weak) id <CDVScreenOrientationDelegate> orientationDelegate;
 @property (nonatomic, weak) CDVWKInAppBrowser* navigationDelegate;
+@property (nonatomic) NSURL* previousURL;
 @property (nonatomic) NSURL* currentURL;
 @property (nonatomic, weak) NSURLAuthenticationChallenge* authBasicChallenge;
 @property (nonatomic, strong) void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential);
@@ -90,6 +91,11 @@
 - (void)sendAuthBasic:(NSString*)username : (NSString*) password;
 - (void)cancelAuthBasic;
 - (void) rePositionViews;
+- (void)overrideFileSaverSaveAsFunction;
+- (NSString*)generateFilename:(NSString *)suggestedFilename;
+- (void)downloadDataUri:(NSString*)dataUri :(NSString*)filename;
+- (void)downloadSucceed:(NSString *)path :(NSString *)mimeType;
+- (void)downloadFailed:(NSString *)message :(int *)errorCode;
 
 - (id)initWithBrowserOptions: (CDVInAppBrowserOptions*) browserOptions andSettings:(NSDictionary*) settings;
 

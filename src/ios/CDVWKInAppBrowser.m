@@ -35,6 +35,7 @@
 #define    kInAppBrowserToolbarBarPositionTop @"top"
 
 #define    IAB_BRIDGE_NAME @"cordova_iab"
+#define    IAB_BRIDGE_DOWNLOAD_NAME @"cordova_iab_download"
 
 #define    TOOLBAR_HEIGHT 44.0
 #define    LOCATIONBAR_HEIGHT 21.0
@@ -731,6 +732,8 @@ static CDVWKInAppBrowser* instance = nil;
         
         [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
     }
+
+    [self.inAppBrowserViewController overrideFileSaverSaveAsFunction];
 }
 
 - (void)webView:(WKWebView*)theWebView didFailNavigation:(NSError*)error
@@ -771,6 +774,7 @@ static CDVWKInAppBrowser* instance = nil;
         }
     
         [self.inAppBrowserViewController.configuration.userContentController removeScriptMessageHandlerForName:IAB_BRIDGE_NAME];
+        [self.inAppBrowserViewController.configuration.userContentController removeScriptMessageHandlerForName:IAB_BRIDGE_DOWNLOAD_NAME];
         self.inAppBrowserViewController.configuration = nil;
     
         [self.inAppBrowserViewController.webView stopLoading];
@@ -862,6 +866,7 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     configuration.processPool = [[CDVWKProcessPoolFactory sharedFactory] sharedProcessPool];
 #endif
     [configuration.userContentController addScriptMessageHandler:self name:IAB_BRIDGE_NAME];
+    [configuration.userContentController addScriptMessageHandler:self name:IAB_BRIDGE_DOWNLOAD_NAME];
     
     //WKWebView options
     configuration.allowsInlineMediaPlayback = _browserOptions.allowinlinemediaplayback;
@@ -1225,6 +1230,7 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
 
 - (void)close
 {
+    self.previousURL = nil;
     self.currentURL = nil;
     
     __weak UIViewController* weakSelf = self;
@@ -1343,6 +1349,143 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     return [UIColor colorWithRed:((rgbValue & 0xFF0000) >> 16)/255.0 green:((rgbValue & 0xFF00) >> 8)/255.0 blue:(rgbValue & 0xFF)/255.0 alpha:1.0];
 }
 
+/*
+ * Override "saveAs" function (FileSaver) because without that, the download of blob URL not working
+ * Only for < 14.5
+ */
+- (void)overrideFileSaverSaveAsFunction
+{
+    if (!@available(iOS 14.5, *)) {
+        NSString* script = @""
+            "if (saveAs && !originalSaveAs) {"
+                "var originalSaveAs = saveAs;"
+                "saveAs = function (blob, name, opts) {"
+                    "if (!(blob instanceof Blob)) {"
+                        "originalSaveAs(blob, name, opts);"
+                    "} else {"
+                        "const fr = new FileReader();"
+                        "fr.onload = () => {"
+                            "window.webkit.messageHandlers.cordova_iab_download.postMessage({ status: 'success', data: { content: fr.result, mimeType: blob.type, filename: name } });"
+                        "};"
+                        "fr.addEventListener('error', (err) => {"
+                            "window.webkit.messageHandlers.cordova_iab_download.postMessage({ status: 'error', error: err })"
+                        "});"
+                        "fr.readAsDataURL(blob);"
+                    "}"
+                "}"
+            "}"
+            // null is needed here as this eval returns the last statement and we can't return a promise
+            "null;"
+        ;
+
+        [self.navigationDelegate evaluateJavaScript:script];
+    }
+}
+
+- (NSString*)generateFilename:(NSString *)suggestedFilename
+{
+    NSString* filename = suggestedFilename;
+
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    [dateFormatter setDateFormat:@"yyyy_MM_dd_HH_mm_ss"];
+    NSString *filenameSuffix = [dateFormatter stringFromDate:[NSDate date]];
+
+    NSRange range = [filename rangeOfString:@"." options:NSBackwardsSearch];
+    if (NSNotFound == range.location) {
+        filename = [NSString stringWithFormat:@"%@_%@", filename, filenameSuffix];
+    } else {
+        filename = [
+            NSString stringWithFormat:@"%@_%@%@",
+            [filename substringWithRange:NSMakeRange(0, range.location)],
+            filenameSuffix,
+            [filename substringWithRange:NSMakeRange(range.location, [filename length] - range.location)]
+        ];
+    }
+
+    return filename;
+}
+
+- (void)downloadDataUri:(NSString*)dataUri :(NSString*)mimeType :(NSString*)filename
+{
+    NSLog(@"downloadDataUri: %@", dataUri);
+    NSLog(@"mimeType: %@", mimeType);
+    NSLog(@"filename: %@", filename);
+
+    NSData* data = [[NSData alloc] initWithContentsOfURL:[[NSURL alloc] initWithString:dataUri]];
+    
+    if (data != nil) {
+        NSString* filenameUniq = [self generateFilename :filename];
+
+        // Save to Documents
+        NSString *documentPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
+        NSString *filePath = [documentPath stringByAppendingPathComponent:filenameUniq];
+        bool success = [data writeToFile:filePath atomically:YES];
+
+        if (success) {
+            [self downloadSucceed :filePath :mimeType];
+        } else {
+            NSLog(@"success ios false");
+            [self downloadFailed :@"unknown" :0];
+        }
+    } else {
+        NSLog(@"data is nil");
+        [self downloadFailed :@"unknown" :0];
+    }
+}
+
+- (void)downloadSucceed:(NSString *)path :(NSString *)mimeType {
+    if (!mimeType) {
+        NSURL* fileUrl = [NSURL fileURLWithPath:path];
+        //NSURLRequest* fileUrlRequest = [[NSURLRequest alloc] initWithURL:fileUrl];
+        NSURLRequest* fileUrlRequest = [[NSURLRequest alloc] initWithURL:fileUrl cachePolicy:NSURLCacheStorageNotAllowed timeoutInterval:.1];
+
+        NSError* error = nil;
+        NSURLResponse* response = nil;
+        NSData* fileData = [NSURLConnection sendSynchronousRequest:fileUrlRequest returningResponse:&response error:&error];
+
+        fileData; // Ignore this if you're using the timeoutInterval
+                  // request, since the data will be truncated.
+
+        mimeType = [response MIMEType];
+
+//        [fileUrlRequest release];
+    }
+
+    NSMutableDictionary* data = [NSMutableDictionary new];
+    [data setValue:path forKey:@"path"];
+    [data setValue:mimeType forKey:@"mimeType"];
+
+    NSMutableDictionary* dResult = [NSMutableDictionary new];
+    [dResult setValue:@"downloadend" forKey:@"type"];
+    [dResult setValue:data forKey:@"data"];
+    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:dResult];
+    [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+
+    [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.addressLabel.text = [self.currentURL absoluteString];
+    });
+}
+
+- (void) downloadFailed:(NSString *)message :(int *)errorCode {
+    NSMutableDictionary* dError = [NSMutableDictionary new];
+    [dError setValue:[NSString stringWithFormat:@"%d", errorCode] forKey:@"code"];
+    [dError setValue:message forKey:@"message"];
+
+    NSMutableDictionary* dResult = [NSMutableDictionary new];
+    [dResult setValue:@"downloaderror" forKey:@"type"];
+    [dResult setValue:dError forKey:@"error"];
+    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:dResult];
+    [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+
+    [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.addressLabel.text = [self.currentURL absoluteString];
+    });
+}
+
 #pragma mark WKNavigationDelegate
 
 - (void)webView:(WKWebView *)theWebView didStartProvisionalNavigation:(WKNavigation *)navigation{
@@ -1376,6 +1519,10 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     BOOL isTopLevelNavigation = [url isEqual:mainDocumentURL];
     
     if (isTopLevelNavigation) {
+        if (![[self.currentURL absoluteString] isEqualToString:[url absoluteString]]) {
+            self.previousURL = self.currentURL;
+        }
+
         self.currentURL = url;
     }
     
@@ -1451,43 +1598,135 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
             decisionHandler(WKNavigationResponsePolicyDownload);
         } else {
             NSURL* downloadUrl = navigationResponse.response.URL;
-            NSURLSessionDataTask* dataTask = [NSURLSession.sharedSession dataTaskWithURL:downloadUrl completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
-                if (data != nil) {
-                    // Save to Documents
-                    NSString *documentPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
-                    NSString *filePath = [documentPath stringByAppendingPathComponent:navigationResponse.response.suggestedFilename];
-                    bool success = [data writeToFile:filePath atomically:YES];
+            if ([downloadUrl.scheme isEqualToString:@"blob"]) {
+                [self downloadBlobUrl:downloadUrl];
+            } else {
+                NSURLSessionDataTask* dataTask = [NSURLSession.sharedSession dataTaskWithURL:downloadUrl completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
+                    if (data != nil) {
+                        NSString* filename = [self generateFilename :navigationResponse.response.suggestedFilename];
 
-                    if (success) {
-                        NSMutableDictionary* dResult = [NSMutableDictionary new];
-                        [dResult setValue:@"downloadend" forKey:@"type"];
-                        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:dResult];
-                        [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+                        // Save to Documents
+                        NSString *documentPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
+                        NSString *filePath = [documentPath stringByAppendingPathComponent:filename];
 
-                        [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
-                    } else {
-                        NSMutableDictionary* dError = [NSMutableDictionary new];
-                        [dError setValue:[NSString stringWithFormat:@"%d", nil] forKey:@"code"];
-                        [dError setValue:error.description forKey:@"message"];
+                        bool success = [data writeToFile:filePath atomically:YES];
 
-                        NSMutableDictionary* dResult = [NSMutableDictionary new];
-                        [dResult setValue:@"downloaderror" forKey:@"type"];
-                        [dResult setValue:dError forKey:@"error"];
-                        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:dResult];
-                        [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
-
-                        [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
-
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            self.addressLabel.text = [self.currentURL absoluteString];
-                        });
+                        if (success) {
+                            [self downloadSucceed :filePath :nil];
+                        } else {
+                            [self downloadFailed :error.description :0];
+                        }
                     }
-                }
-            }];
-            [dataTask resume];
+                }];
+
+                [dataTask resume];
+            }
 
             decisionHandler(WKNavigationResponsePolicyCancel);
         }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.currentURL = self.previousURL;
+            self.addressLabel.text = [self.currentURL absoluteString];
+        });
+    }
+}
+
+/*
+ Intercept the download of documents in webView, trigger the download in JavaScript and pass the binary file to JavaScript handler in Swift code
+ */
+- (void)downloadBlobUrl:(NSURL*)url
+{
+    NSString* urlAsString = url.absoluteString;
+    if (nil != urlAsString) {
+        NSString* script = [
+            NSString stringWithFormat:@""
+                "if (saveAs) {"
+                    "var originalSaveAs = saveAs;"
+                    "saveAs = function (blob, name, opts) {"
+                        "const fr = new FileReader();"
+                        "fr.onload = () => {"
+                            "window.webkit.messageHandlers.cordova_iab_download.postMessage({ status: 'success', data: { content: fr.result, mimeType: blob.type, filename: name } });"
+                        "};"
+                        "fr.addEventListener('error', (err) => {"
+                            "window.webkit.messageHandlers.cordova_iab_download.postMessage({ status: 'error', error: err })"
+                        "});"
+                        "fr.readAsDataURL(blob);"
+                    "}"
+                "}"
+//                "(async function download() {"
+//                    "const url = '%@';"
+//                    "window.open(url);"
+//                    "try {"
+//                        // we use a second try block here to have more detailed error information
+//                        // because of the nature of JS the outer try-catch doesn't know anything where the error happended
+//                        "let res;"
+//                        "try {"
+//                            "res = await fetch(url, {"
+//                                "credentials: 'include'"
+//                            "});"
+//                        "} catch (err) {"
+//                            "window.webkit.messageHandlers.jsError.postMessage(`fetch threw, error: ${err}, url: ${url}`);"
+//                            "return;"
+//                        "}"
+//                        "if (!res.ok) {"
+//                            "window.webkit.messageHandlers.jsError.postMessage(`Response status was not ok, status: ${res.status}, url: ${url}`);"
+//                            "return;"
+//                        "}"
+//                        "const contentDisp = res.headers.get('content-disposition');"
+//                        "if (contentDisp) {"
+//                            "const match = contentDisp.match(/(^;|)\\s*filename=\\s*(\"([^\"]*)\"|([^;\\s]*))\\s*(;|$)/i);"
+//                            "if (match) {"
+//                                "filename = match[3] || match[4];"
+//                            "} else {"
+//                                // TODO: we could here guess the filename from the mime-type (e.g. unnamed.pdf for pdfs, or unnamed.tiff for tiffs)
+//                                "window.webkit.messageHandlers.jsError.postMessage(`content-disposition header could not be matched against regex, content-disposition: ${contentDisp} url: ${url}`);"
+//                            "}"
+//                        "} else {"
+//                            "window.webkit.messageHandlers.jsError.postMessage(`content-disposition header missing, url: ${url}`);"
+//                            "return;"
+//                        "}"
+//                        "if (!filename) {"
+//                            "const contentType = res.headers.get('content-type');"
+//                            "if (contentType) {"
+//                                "if (contentType.indexOf('application/json') === 0) {"
+//                                    "filename = 'unnamed.pdf';"
+//                                "} else if (contentType.indexOf('image/tiff') === 0) {"
+//                                    "filename = 'unnamed.tiff';"
+//                                "}"
+//                            "}"
+//                        "}"
+//                        "if (!filename) {"
+//                            "window.webkit.messageHandlers.jsError.postMessage(`Could not determine filename from content-disposition nor content-type, content-dispositon: ${contentDispositon}, content-type: ${contentType}, url: ${url}`);"
+//                        "}"
+//                        "let data;"
+//                        "try {"
+//                            "data = await res.blob();"
+//                        "} catch (err) {"
+//                            "window.webkit.messageHandlers.jsError.postMessage(`res.blob() threw, error: ${err}, url: ${url}`);"
+//                            "return;"
+//                        "}"
+//                        "const fr = new FileReader();"
+//                        "fr.onload = () => {"
+//                            "window.webkit.messageHandlers.openDocument.postMessage(`${filename};${fr.result}`)"
+//                        "};"
+//                        "fr.addEventListener('error', (err) => {"
+//                            "window.webkit.messageHandlers.jsError.postMessage(`FileReader threw, error: ${err}`)"
+//                        "});"
+//                        "fr.readAsDataURL(data);"
+//                    "} catch (err) {"
+//                        // TODO: better log the error, currently only TypeError: Type error
+//                        "window.webkit.messageHandlers.jsError.postMessage(`JSError while downloading document, url: ${url}, err: ${err}`)"
+//                    "}"
+//                "})();"
+                // null is needed here as this eval returns the last statement and we can't return a promise
+                "null;"
+            ,
+            urlAsString
+        ];
+
+        NSLog(@"downloadBlobUrl - URL : %@ - script : %@", url, script);
+        [self.navigationDelegate evaluateJavaScript:script];
     }
 }
 
@@ -1501,45 +1740,57 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
 
 #pragma mark WKDownloadDelegate
 
+NSString* downloadedFilePath = @"";
+
 - (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response suggestedFilename:(NSString *)suggestedFilename completionHandler:(void (^)(NSURL * _Nullable))completionHandler {
+    NSString* filename = [self generateFilename :suggestedFilename];
+
     // Save to Documents
     NSString *documentPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
-    NSString *filePath = [documentPath stringByAppendingPathComponent:suggestedFilename];
+    NSString *filePath = [documentPath stringByAppendingPathComponent:filename];
     NSURL* url = [NSURL fileURLWithPath:filePath];
+
+    downloadedFilePath = filePath;
 
     completionHandler(url);
 }
 
 - (void)downloadDidFinish:(WKDownload *)download {
-    NSMutableDictionary* dResult = [NSMutableDictionary new];
-    [dResult setValue:@"downloadend" forKey:@"type"];
-    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:dResult];
-    [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
-
-    [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
+    [self downloadSucceed :downloadedFilePath :nil];
 }
 
 - (void) download:(WKDownload *)download didFailWithError:(NSError *)error resumeData:(NSData *)resumeData {
-    NSMutableDictionary* dError = [NSMutableDictionary new];
-    [dError setValue:[NSString stringWithFormat:@"%d", error.code] forKey:@"code"];
-    [dError setValue:error.description forKey:@"message"];
-
-    NSMutableDictionary* dResult = [NSMutableDictionary new];
-    [dResult setValue:@"downloaderror" forKey:@"type"];
-    [dResult setValue:dError forKey:@"error"];
-    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:dResult];
-    [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
-
-    [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.addressLabel.text = [self.currentURL absoluteString];
-    });
+    [self downloadFailed :error.description :error.code];
 }
 
 #pragma mark WKScriptMessageHandler delegate
 - (void)userContentController:(nonnull WKUserContentController *)userContentController didReceiveScriptMessage:(nonnull WKScriptMessage *)message {
     if (![message.name isEqualToString:IAB_BRIDGE_NAME]) {
+        if ([message.name isEqualToString:IAB_BRIDGE_DOWNLOAD_NAME]) {
+//            NSLog(@"Received script message from %@: %@", IAB_BRIDGE_DOWNLOAD_NAME, message.body);
+            
+            NSDictionary* messageContent = (NSDictionary*) message.body;
+            NSString* scriptCallbackId = messageContent[@"id"];
+            
+            if([messageContent objectForKey:@"data"]){
+                NSDictionary* scriptResult = messageContent[@"data"];
+                if([scriptResult objectForKey:@"content"]){
+                    NSString* mimeType = [scriptResult objectForKey:@"mimeType"] ?: @"";
+                    NSString* filename = [scriptResult objectForKey:@"filename"] ?: @"";
+
+                    [self downloadDataUri :scriptResult[@"content"] :mimeType :filename];
+                } else {
+                    if([messageContent objectForKey:@"error"]) {
+                        [self downloadFailed :[messageContent objectForKey:@"error"] :0];
+                    } else {
+                        [self downloadFailed :@"unknown" :0];
+                    }
+                }
+            } else {
+                [self downloadFailed :@"unknown" :0];
+            }
+        }
+
         return;
     }
     //NSLog(@"Received script message %@", message.body);
