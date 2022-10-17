@@ -40,6 +40,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.text.InputType;
+import android.util.Base64;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -229,6 +230,10 @@ public class InAppBrowser extends CordovaPlugin {
      */
     public boolean execute(String action, CordovaArgs args, final CallbackContext callbackContext) throws JSONException {
         if (action.equals("open")) {
+            if (null != currentClient) {
+                currentClient.resetAuthBasicValue();
+            }
+
             this.callbackContext = callbackContext;
             final String url = args.getString(0);
             String t = args.optString(1);
@@ -1304,6 +1309,11 @@ public class InAppBrowser extends CordovaPlugin {
             String cookieString = CookieManager.getInstance().getCookie(url);
             request.addRequestHeader("cookie", cookieString);
 
+            String encodedCredentials = currentClient.getAuthBasicValue();
+            if (!encodedCredentials.equals("")) {
+                request.addRequestHeader("Authorization", "Basic " + encodedCredentials);
+            }
+
             request.allowScanningByMediaScanner();
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); // Notify client once download is completed!
 
@@ -1374,6 +1384,8 @@ public class InAppBrowser extends CordovaPlugin {
         private HttpAuthHandler authBasicHandler;
         private String authBasicHost;
         private String authBasicRealm;
+
+        private String authBasicValue = "";
 
         /**
          * Constructor.
@@ -1552,7 +1564,18 @@ public class InAppBrowser extends CordovaPlugin {
             return override;
         }
 
+        public String getAuthBasicValue() {
+            return this.authBasicValue;
+        }
+
+        public void resetAuthBasicValue() {
+            this.authBasicValue = "";
+        }
+
         public boolean sendAuthBasic(String username, String password) {
+            String valueToEncode = username + ":" + password;
+            this.authBasicValue = Base64.encodeToString(valueToEncode.getBytes(), Base64.DEFAULT);
+
             WebView authBasicView = this.authBasicView;
             HttpAuthHandler authBasicHandler = this.authBasicHandler;
             String authBasicHost = this.authBasicHost;
