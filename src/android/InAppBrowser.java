@@ -1317,7 +1317,8 @@ public class InAppBrowser extends CordovaPlugin {
             request.allowScanningByMediaScanner();
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); // Notify client once download is completed!
 
-            final String filename = URLUtil.guessFileName(url, contentDisposition, mimetype);
+            String filename = URLUtil.guessFileName(url, contentDisposition, mimetype);
+            filename = filename.replaceAll("[^a-zA-Z0-9\\.\\-]", "_");
             request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
 
             DownloadManager dm = (DownloadManager) cordova.getActivity().getSystemService(Context.DOWNLOAD_SERVICE);
