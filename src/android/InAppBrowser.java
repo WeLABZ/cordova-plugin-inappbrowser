@@ -449,7 +449,12 @@ public class InAppBrowser extends CordovaPlugin {
             final String username = args.getString(0);
             final String password = args.getString(1);
 
-            currentClient.sendAuthBasic(username, password);
+            this.cordova.getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    currentClient.sendAuthBasic(username, password);
+                }
+            });
 
             PluginResult pluginResult = new PluginResult(PluginResult.Status.OK);
             pluginResult.setKeepCallback(true);
