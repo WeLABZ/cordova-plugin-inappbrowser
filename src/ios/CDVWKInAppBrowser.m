@@ -1244,12 +1244,12 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
             } else {
                 [[weakSelf parentViewController] dismissViewControllerAnimated:YES completion:nil];
             }
-        } else {
-            CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
-                                                          messageAsDictionary:@{@"type":@"exit"}];
-            [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
-            [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
         }
+
+        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                                                      messageAsDictionary:@{@"type":@"exit"}];
+        [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
+        [self.navigationDelegate.commandDelegate sendPluginResult:pluginResult callbackId:self.navigationDelegate.callbackId];
     });
 }
 
