@@ -761,14 +761,14 @@ static CDVWKInAppBrowser* instance = nil;
         CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
                                                       messageAsDictionary:@{@"type":@"exit"}];
         
-        if (!IsAtLeastiOSVersion(@"15.0")) {
+        if (!IsAtLeastiOSVersion(@"15.0") || IsAtLeastiOSVersion(@"16.0")) {
             [pluginResult setKeepCallback:[NSNumber numberWithBool:YES]];
         }
 
         [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
     }
     
-    if (IsAtLeastiOSVersion(@"15.0")) {
+    if (IsAtLeastiOSVersion(@"15.0") && !IsAtLeastiOSVersion(@"16.0")) {
         if (self.callbackId != nil) {
             self.callbackId = nil;
         }
@@ -1238,7 +1238,7 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
     // Run later to avoid the "took a long time" log message.
     dispatch_async(dispatch_get_main_queue(), ^{
         isExiting = TRUE;
-        if (IsAtLeastiOSVersion(@"15.0")) {
+        if (IsAtLeastiOSVersion(@"15.0") && !IsAtLeastiOSVersion(@"16.0")) {
             if ([weakSelf respondsToSelector:@selector(presentingViewController)]) {
                 [[weakSelf presentingViewController] dismissViewControllerAnimated:YES completion:nil];
             } else {
