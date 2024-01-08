@@ -513,6 +513,9 @@ public class InAppBrowser extends CordovaPlugin {
      */
     @Override
     public void onPause(boolean multitasking) {
+        // Flush on pause to keep cookies
+        flushCookies();
+
         if (shouldPauseInAppBrowser) {
             inAppWebView.onPause();
         }
@@ -533,6 +536,9 @@ public class InAppBrowser extends CordovaPlugin {
      * Stop listener.
      */
     public void onDestroy() {
+        // Flush on destroy to keep cookies
+        flushCookies();
+
         // unregisterReceiver(onDownloadComplete);
         closeDialog();
     }
@@ -710,6 +716,15 @@ public class InAppBrowser extends CordovaPlugin {
                 } catch (JSONException ex) {
                     LOG.d(LOG_TAG, "Should never happen");
                 }
+            }
+        });
+    }
+
+    public void flushCookies() {
+        this.cordova.getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                CookieManager.getInstance().flush();
             }
         });
     }
