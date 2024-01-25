@@ -1506,6 +1506,13 @@ void (^authBasicCompletionHandler)(NSURLSessionAuthChallengeDisposition disposit
 
 - (void)webView:(WKWebView *)theWebView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
 {
+    if (navigationAction.navigationType == WKNavigationTypeBackForward) {
+        if (self.webView.canGoBack) {
+            decisionHandler(WKNavigationActionPolicyAllow);
+            return;
+        }
+    }
+
     if (@available(iOS 14.5, *)) {
         if (navigationAction.shouldPerformDownload) {
             decisionHandler(WKNavigationActionPolicyDownload);
