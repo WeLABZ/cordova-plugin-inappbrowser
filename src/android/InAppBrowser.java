@@ -71,6 +71,8 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
+import androidx.core.content.ContextCompat;
+
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.Config;
 import org.apache.cordova.CordovaArgs;
@@ -216,7 +218,8 @@ public class InAppBrowser extends CordovaPlugin {
 
         cordova.getActivity().registerReceiver(
             onDownloadComplete,
-            new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
         );
     }
 
