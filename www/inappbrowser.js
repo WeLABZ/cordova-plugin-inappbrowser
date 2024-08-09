@@ -60,8 +60,8 @@
         show: function (eventname) {
             exec(null, null, 'InAppBrowser', 'show', []);
         },
-        hide: function (eventname) {
-            exec(null, null, 'InAppBrowser', 'hide', []);
+        hide: function (force) {
+            exec(null, null, 'InAppBrowser', 'hide', [force]);
         },
         addEventListener: function (eventname, f) {
             if (eventname in this.channels) {

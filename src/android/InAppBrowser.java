@@ -142,6 +142,8 @@ public class InAppBrowser extends CordovaPlugin {
 
     private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, X, Y, WIDTH, HEIGHT);
 
+    private LinearLayout main;
+
     private InAppBrowserDialog dialog;
     private WebView inAppWebView;
     private EditText edittext;
@@ -404,7 +406,27 @@ public class InAppBrowser extends CordovaPlugin {
                 @Override
                 public void run() {
                     if (dialog != null && !cordova.getActivity().isFinishing()) {
-                        dialog.hide();
+                        // Issue: Dialog appears unexpectedly
+                        if (args.optBoolean(0)) {
+                            if (main != null) {
+                                WindowManager.LayoutParams wlp = dialog.getWindow().getAttributes();
+                                InAppBrowserDialog inAppBrowserDialog = createDialog(
+                                    wlp.x,
+                                    wlp.y,
+                                    wlp.width,
+                                    wlp.height
+                                );
+
+                                ((ViewGroup)main.getParent()).removeView(main);
+                                dialog.dismiss();
+                                dialog = null;
+
+                                inAppBrowserDialog.setContentView(main);
+                                dialog = inAppBrowserDialog;
+                            }
+                        } else {
+                            dialog.hide();
+                        }
                     }
                 }
             });
@@ -798,6 +820,32 @@ public class InAppBrowser extends CordovaPlugin {
         return this;
     }
 
+    private InAppBrowserDialog createDialog(int x, int y, int width, int height) {
+        InAppBrowserDialog inAppBrowserDialog = new InAppBrowserDialog(cordova.getActivity(), android.R.style.Theme_NoTitleBar);
+        inAppBrowserDialog.getWindow().getAttributes().windowAnimations = android.R.style.Animation_Dialog;
+        inAppBrowserDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        if (fullscreen) {
+            inAppBrowserDialog.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        }
+        inAppBrowserDialog.setCancelable(true);
+        inAppBrowserDialog.setInAppBroswer(getInAppBrowser());
+
+        Window window = inAppBrowserDialog.getWindow();
+        WindowManager.LayoutParams wlp = window.getAttributes();
+        wlp.gravity = Gravity.TOP | Gravity.LEFT;
+        wlp.x = x;
+        wlp.y = y;
+        wlp.width = width;
+        wlp.height = height;
+        wlp.dimAmount=0.5f;
+        window.setFlags(LayoutParams.FLAG_NOT_TOUCH_MODAL,LayoutParams.FLAG_NOT_TOUCH_MODAL);
+        // window.setFlags(LayoutParams.FLAG_NOT_FOCUSABLE,LayoutParams.FLAG_NOT_FOCUSABLE);
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        window.setAttributes(wlp);
+
+        return inAppBrowserDialog;
+    }
+
     /**
      * Display a new browser with the specified URL.
      *
@@ -963,14 +1011,12 @@ public class InAppBrowser extends CordovaPlugin {
                 };
 
                 // Let's create the main dialog
-                dialog = new InAppBrowserDialog(cordova.getActivity(), android.R.style.Theme_NoTitleBar);
-                dialog.getWindow().getAttributes().windowAnimations = android.R.style.Animation_Dialog;
-                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-                if (fullscreen) {
-                    dialog.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-                }
-                dialog.setCancelable(true);
-                dialog.setInAppBroswer(getInAppBrowser());
+                dialog = createDialog(
+                    features.get(X) != null ? this.dpToPixels(Integer.parseInt(features.get(X))) : 0,
+                    features.get(Y) != null ? this.dpToPixels(Integer.parseInt(features.get(Y))) : 0,
+                    features.get(WIDTH) != null ? this.dpToPixels(Integer.parseInt(features.get(WIDTH))) : WindowManager.LayoutParams.MATCH_PARENT,
+                    features.get(HEIGHT) != null ? this.dpToPixels(Integer.parseInt(features.get(HEIGHT))) : WindowManager.LayoutParams.MATCH_PARENT
+                );
 
                 Window window = dialog.getWindow();
                 WindowManager.LayoutParams wlp = window.getAttributes();
@@ -984,7 +1030,7 @@ public class InAppBrowser extends CordovaPlugin {
                 window.setAttributes(wlp);
 
                 // Main container layout
-                LinearLayout main = new LinearLayout(cordova.getActivity());
+                main = new LinearLayout(cordova.getActivity());
                 main.setOrientation(LinearLayout.VERTICAL);
 
                 // Toolbar layout
@@ -1220,19 +1266,10 @@ public class InAppBrowser extends CordovaPlugin {
                     webViewLayout.addView(footer);
                 }
 
-                WindowManager.LayoutParams lp = new WindowManager.LayoutParams();
-                lp.copyFrom(dialog.getWindow().getAttributes());
-
-                lp.x = features.get(X) != null ? this.dpToPixels(Integer.parseInt(features.get(X))) : 0;
-                lp.y = features.get(Y) != null ? this.dpToPixels(Integer.parseInt(features.get(Y))) : 0;
-                lp.width = features.get(WIDTH) != null ? this.dpToPixels(Integer.parseInt(features.get(WIDTH))) : WindowManager.LayoutParams.MATCH_PARENT;
-                lp.height = features.get(HEIGHT) != null ? this.dpToPixels(Integer.parseInt(features.get(HEIGHT))) : WindowManager.LayoutParams.MATCH_PARENT;
-
 
                 if (dialog != null) {
                     dialog.setContentView(main);
                     dialog.show();
-                    dialog.getWindow().setAttributes(lp);
                 }
                 // the goal of openhidden is to load the url and not display it
                 // Show() needs to be called to cause the URL to be loaded
