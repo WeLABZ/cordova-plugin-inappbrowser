@@ -221,7 +221,7 @@ public class InAppBrowser extends CordovaPlugin {
         cordova.getActivity().registerReceiver(
             onDownloadComplete,
             new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_EXPORTED
         );
     }
 
