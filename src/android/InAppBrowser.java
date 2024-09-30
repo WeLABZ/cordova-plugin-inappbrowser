@@ -1266,10 +1266,19 @@ public class InAppBrowser extends CordovaPlugin {
                     webViewLayout.addView(footer);
                 }
 
+                WindowManager.LayoutParams lp = new WindowManager.LayoutParams();
+                lp.copyFrom(dialog.getWindow().getAttributes());
+
+                lp.x = features.get(X) != null ? this.dpToPixels(Integer.parseInt(features.get(X))) : 0;
+                lp.y = features.get(Y) != null ? this.dpToPixels(Integer.parseInt(features.get(Y))) : 0;
+                lp.width = features.get(WIDTH) != null ? this.dpToPixels(Integer.parseInt(features.get(WIDTH))) : WindowManager.LayoutParams.MATCH_PARENT;
+                lp.height = features.get(HEIGHT) != null ? this.dpToPixels(Integer.parseInt(features.get(HEIGHT))) : WindowManager.LayoutParams.MATCH_PARENT;
+
 
                 if (dialog != null) {
                     dialog.setContentView(main);
                     dialog.show();
+                    dialog.getWindow().setAttributes(lp);
                 }
                 // the goal of openhidden is to load the url and not display it
                 // Show() needs to be called to cause the URL to be loaded
